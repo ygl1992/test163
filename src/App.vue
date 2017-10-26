@@ -10,7 +10,7 @@
         <div slot="right">搜索</div>
       </x-header>
 
-      <scroller :lock-y="true">
+      <sc :lock-y="true">
         <div class="tab">
           <tab>
             <tab-item selected>推荐</tab-item>
@@ -22,22 +22,28 @@
             <tab-item>黑客</tab-item>
           </tab>
         </div>
+      </sc>
+
+      <scroller 
+        class="my-scroller"
+        :on-refresh="refresh"
+        :on-infinite="infinite"
+        ref="myRef"
+      >
+        <swiper 
+          :list="swiperList" 
+          v-model="swiperIndex"
+          :loop="true"
+        ></swiper>
+
+        <marquee class="my-marquee">
+          <marquee-item v-for="i in marqueeList">{{i.title}}</marquee-item>
+        </marquee>
+
+        <panel :list="dataList"></panel>
+        <panel :list="moreDataList"></panel>
       </scroller>
-
-      <swiper 
-        :list="swiperList" 
-        v-model="swiperIndex"
-        :loop="true"
-      ></swiper>
-
-      <marquee class="my-marquee">
-        <marquee-item v-for="i in 5" :key="i">Hello world {{i}}</marquee-item>
-      </marquee>
-
-      <panel
-        :list="dataList"
-      ></panel>
-
+      
       <tabbar>
         <tabbar-item>
           <img slot="icon" src="./assets/icon_nav_button.png">
@@ -58,7 +64,23 @@
 
 <script>
 import 'vux/src/styles/reset.less'
-import {ViewBox, XHeader, Tabbar, TabbarItem, Tab, TabItem, Scroller, Swiper, Marquee, MarqueeItem, Panel } from 'vux'
+import {ViewBox, XHeader, Tabbar, TabbarItem, Tab, TabItem, Scroller as sc, Swiper, Marquee, MarqueeItem, Panel } from 'vux'
+
+var refreshKey = ['A', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09', 'B010'];
+var key = 0;
+var start = 0;
+var end = start + 9;
+var keyValue = 'A';
+var initLoaded = false; // 初始化数据是否加载完成
+
+function getRefreshKey(){
+  key++;
+  if( key==refreshKey.length ){
+    key=0;
+  }
+  keyValue = refreshKey[key];
+  return keyValue;
+}
 
 export default {
   name: 'app',
@@ -69,7 +91,7 @@ export default {
     TabbarItem,
     Tab,
     TabItem,
-    Scroller,
+    sc,
     Swiper,
     Marquee,
     MarqueeItem,
@@ -89,30 +111,91 @@ export default {
         }
       })
 
-      // 新闻列表的数据
-      // this.dataList = data.list.filter(item => {
-      //   return item.addata === null
-      // }).map(item => {
-      //   return {
-      //     src: '',
-      //     title: '',
-      //     desc: ''
+      // 滚动新闻列表的数据
+      this.marqueeList = data.live.filter(item => {
+        return item.addata === null
+      }).map(item => {
+        return {
+          title: item.title
+        }
+      })
 
-      //     title: item.link,
-      //     src: item.picInfo[0].url,
-      //     desc: item.title
-      //   }
-      // })
-      // src: 'http://placeholder.qiniudn.com/60x60/3cc51f/ffffff',
-      // title: '标题一',
-      // desc: '由各种物质组成的巨型球状天体，叫做星球。星球有一定的形状，有自己的运行轨道。'
+      // 新闻列表的数据
+      this.dataList = data.list.filter(item => {
+        return item.addata === null
+      }).map(item => {
+        return {
+          src: item.picInfo[0].url,
+          title: item.title,
+          desc: item.digest
+        }
+      })
+
+      initLoaded = true;
     })
   },
   data () {
     return {
       swiperList: [],
       swiperIndex: 0,
-      dataList: []
+      marqueeList: [],
+      dataList: [],
+      moreDataList: []
+    }
+  },
+  methods: {
+    refresh () {
+      getRefreshKey();
+      // 下拉数据加载
+      this.$jsonp('http://3g.163.com/touch/jsonp/sy/recommend/0-9.html', {
+        miss: '00',
+        refresh: keyValue
+      }).then(data => {
+        // 下拉刷新新闻列表的数据
+        this.dataList = data.list.filter(item => {
+          return item.addata === null && item.picInfo[0]
+        }).map(item => {
+          return {
+            src: item.picInfo[0].url,
+            title: item.title,
+            desc: item.digest
+          }
+        });
+
+        this.$refs.myRef.finishPullToRefresh();
+        this.$vux.toast.show(`当前一共刷新了${this.dataList.length}条数据`, 'top');
+      })
+    },
+    infinite () {
+      if(!initLoaded){
+        this.$refs.myRef.finishInfinite();
+        return;
+      }
+
+      this.$jsonp(`http://3g.163.com/touch/jsonp/sy/recommend/${start}-${end}.html`, {
+        miss: '00',
+        refresh: keyValue
+      }).then(data => {
+        //上拉加载更多
+        setTimeout(()=>{
+          var dataList = data.list.filter(item => {
+            return item.addata === null && item.picInfo[0]
+          }).map(item => {
+            return {
+              src: item.picInfo[0].url,
+              title: item.title,
+              desc: item.digest
+            }
+          });
+
+          this.moreDataList = this.moreDataList.concat(dataList)
+
+          start += 10;
+          end = start + 9;
+
+          this.$refs.myRef.finishInfinite();
+        }, 1000);
+      });
     }
   }
 }
@@ -142,6 +225,17 @@ html,body{
   }
   .my-marquee{
     margin: 10px;
+  }
+  .weui-media-box__hd,
+  .weui-media-box__hd img{
+    width: 102px;
+    height: 78px;
+  }
+  .weui-media-box__bd{
+    height: 78px;
+  }
+  .my-scroller {
+    top: 90px;
   }
 }
 
